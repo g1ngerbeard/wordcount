@@ -1,7 +1,7 @@
 ### Part 1 - Wordcount
 You are given the following interface
 
-```
+```java
 public interface CharacterReader {
 
   /**
