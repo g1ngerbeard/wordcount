@@ -27,7 +27,7 @@ mat - 1
 on – 1
 sat – 1
 ```
-###Part 2 – Slow, parallel wordcount
+### Part 2 – Slow, parallel wordcount
 You are given 10 instances of the above interface, which sleep for a random amount of time before returning a character. 
 Write code that will read these in parallel. 
 It should output the current (combined) counts of the words every 10 seconds and final totals at the end.
