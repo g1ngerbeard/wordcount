@@ -15,7 +15,7 @@ public class DelayedCharacterReader implements CharacterReader {
 
   @Override
   public char nextCharacter() throws EOFException, InterruptedException {
-    int delay = new Random().nextInt(1000);
+    int delay = new Random().nextInt(500);
     Thread.sleep(delay);
 
     pos += 1;

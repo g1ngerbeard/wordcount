@@ -1,7 +1,8 @@
 package me.wordcount
 
 import akka.NotUsed
-import akka.stream.{ActorMaterializer, OverflowStrategy}
+import akka.stream.ThrottleMode.Shaping
+import akka.stream.ActorMaterializer
 import akka.stream.scaladsl.{Flow, Sink, Source}
 
 import scala.annotation.tailrec
@@ -16,27 +17,37 @@ object WordCounter {
   def count(first: CharacterReader, rest: CharacterReader*)
            (implicit mat: ActorMaterializer): Future[CountResult] = count(first :: rest.toList)
 
+  //todo: async boundaries
   def count(readers: List[CharacterReader])(implicit mat: ActorMaterializer): Future[CountResult] =
     Source(readers)
-      .async("akka.actor.default-blocking-io-dispatcher")
-      .flatMapMerge(readers.length, WordSource.build)
-      .async("akka.actor.default-dispatcher")
+      .flatMapMerge(readers.length, WordSource.build(_).async)
       .scan(Map.empty[String, Int]) { (result, message) =>
         result + (message -> (result.getOrElse(message, 0) + 1))
       }
       .wireTap(
         Flow[CountResult]
-          .buffer(1, OverflowStrategy.dropHead)
-          .throttle(1, 5 seconds)
-          .map(println)
+          .throttle(1, 5 seconds, 0, Shaping)
+          .map(printResult("Current result"))
           .to(Sink.ignore)
       )
       .runWith(Sink.last)
 
+   // todo: sort output
+   def printResult(title: String)(result: CountResult): Unit = {
+    println("================================")
+    println(s"$title")
+    println("================================")
+    result.foreach { case (word, count) =>
+        println(s"$word: $count")
+    }
+  }
+
 }
 
-//todo: other word separators .:, etc.
 object WordSource {
+
+  val SeparatorChars = Set('.', ',', '\n', ' ', '\t')
+
   def build(cr: CharacterReader): Source[String, NotUsed] = {
 
     // todo: rewrite as a stream stage?
@@ -44,8 +55,8 @@ object WordSource {
       @tailrec
       def loop(word: String): Option[String] =
         Try(cr.nextCharacter()) match {
-          case Success(' ') if word.nonEmpty => Some(word)
-          case Success(' ') => loop("")
+          case Success(c) if SeparatorChars.contains(c) =>
+            if (word.nonEmpty) Some(word) else loop("")
           case Success(c) => loop(word + c)
           case _ if word.nonEmpty => Some(word)
           case _ => None

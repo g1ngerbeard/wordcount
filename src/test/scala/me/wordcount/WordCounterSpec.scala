@@ -9,17 +9,20 @@ import scala.concurrent.duration._
 
 class WordCounterSpec extends FunSuite with Matchers {
 
-  val SimpleText = "bla bla one two three bla weee bla one bla two day green black friday day monday green lake seven sky"
+  val SimpleText = "bla bla, one two. Three bla weee bla one bla two day green black friday day monday green lake seven sky"
+
+  val SimpleText2 = "What is the action of following approach. Two three bla weee blagreen lake seven sky, one bla two. day green monday "
 
   test("count words in simple text"){
     val delayedReader = new DelayedCharacterReader(SimpleText)
+    val delayedReader2 = new DelayedCharacterReader(SimpleText2)
 
     implicit val system: ActorSystem = ActorSystem()
     implicit val mat: ActorMaterializer = ActorMaterializer()
 
-    val result = Await.result(WordCounter.count(delayedReader), 200 seconds)
+    val result = Await.result(WordCounter.count(delayedReader, delayedReader2), 100 seconds)
 
-    println(s"Final result: $result")
+    WordCounter.printResult("Final result")(result)
 
     system.terminate()
   }
