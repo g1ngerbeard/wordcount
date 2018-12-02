@@ -35,7 +35,7 @@ class WordCounter()(implicit mat: ActorMaterializer) {
   //todo: async boundaries
   def count(readers: List[CharacterReader]): Future[CountResult] =
     Source(readers)
-      .flatMapMerge(readers.length, WordSource.build(_).async)
+      .flatMapMerge(readers.length, WordSource.from(_).async)
       .scan(Map.empty[String, Int]) { (result, message) =>
         result + (message -> (result.getOrElse(message, 0) + 1))
       }
@@ -51,9 +51,9 @@ class WordCounter()(implicit mat: ActorMaterializer) {
 
 object WordSource {
 
-  val SeparatorChars = Set('.', ',', '\n', ' ', '\t', '!', '?')
+  val SeparatorChars = Set('.', ',', ' ', '!', '?', '\t', '\n')
 
-  def build(cr: CharacterReader): Source[String, NotUsed] = {
+  def from(cr: CharacterReader): Source[String, NotUsed] = {
 
     // todo: rewrite as a stream stage?
     def nextWord: Option[String] = {

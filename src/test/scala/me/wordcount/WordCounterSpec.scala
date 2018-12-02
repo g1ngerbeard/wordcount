@@ -2,7 +2,7 @@ package me.wordcount
 
 import akka.actor.ActorSystem
 import akka.stream.ActorMaterializer
-import me.wordcount.WordCounterSpec.{withMaterializer, withWordCounter}
+import me.wordcount.WordCounterSpec.{TestDelay, withMaterializer, withWordCounter}
 import org.scalatest.{FunSuite, Matchers}
 
 import scala.concurrent.Await
@@ -17,39 +17,40 @@ class WordCounterSpec extends FunSuite with Matchers {
 
       val reader = new SimpleCharacterReader(testText)
 
-      val result = WordSource.build(reader).runFold(Vector.empty[String])(_ :+ _)
+      val result = WordSource.from(reader).runFold(Vector.empty[String])(_ :+ _)
       Await.result(result, 1 second) shouldBe words
     }
   }
 
   test("count words in text") {
     withWordCounter { wordCounter =>
-      val reader = new DelayedCharacterReader("The cat sat on the mat", 10)
-      val output = List("the" -> 2, "cat" -> 1, "mat" -> 1, "on" -> 1, "sat" -> 1)
+      val reader = new DelayedCharacterReader("The cat sat on the mat", TestDelay)
 
       val result = Await.result(wordCounter.count(reader), 1 second)
 
-      result shouldBe output
+      result shouldBe List("the" -> 2, "cat" -> 1, "mat" -> 1, "on" -> 1, "sat" -> 1)
     }
   }
 
-  ignore("count words from two sources") {
+  test("count words from multiple sources") {
     withWordCounter { wordCounter =>
-      val SimpleText = "bla bla, one two. Three bla weee bla one bla two day green black friday day monday green lake seven sky"
-      val SimpleText2 = "What is the action of following approach. Two three bla weee blagreen lake seven sky, one bla two. day green monday "
+      val TestText1 = "The cat sat on the mat"
+      val TestText2 = "The dog sat on the stone"
 
-      val delayedReader = new DelayedCharacterReader(SimpleText, 50)
-      val delayedReader2 = new DelayedCharacterReader(SimpleText2, 50)
+      val reader1 = new DelayedCharacterReader(TestText1, TestDelay)
+      val reader2 = new DelayedCharacterReader(TestText2, TestDelay * 3)
 
-      val result = Await.result(wordCounter.count(delayedReader, delayedReader2), 10 seconds)
+      val result = Await.result(wordCounter.count(reader1, reader2), 1 second)
 
-      WordCounter.printResult("Final result")(result)
+      result shouldBe List("the" -> 4, "on" -> 2, "sat" -> 2, "cat" -> 1, "dog"-> 1, "mat" -> 1, "stone" -> 1)
     }
   }
 
 }
 
 object WordCounterSpec {
+
+  val TestDelay = 10
 
   def withMaterializer(runTest: ActorMaterializer => Unit): Unit = {
     implicit val system: ActorSystem = ActorSystem()
