@@ -7,15 +7,18 @@ public class DelayedCharacterReader implements CharacterReader {
 
   private final String text;
 
-  public DelayedCharacterReader(String text) {
+  private final int delayMs;
+
+  public DelayedCharacterReader(String text, int delayMs) {
     this.text = text;
+    this.delayMs = delayMs;
   }
 
   private int pos = -1;
 
   @Override
   public char nextCharacter() throws EOFException, InterruptedException {
-    int delay = new Random().nextInt(500);
+    int delay = new Random().nextInt(delayMs);
     Thread.sleep(delay);
 
     pos += 1;

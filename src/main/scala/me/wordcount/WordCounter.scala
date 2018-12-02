@@ -4,49 +4,54 @@ import akka.NotUsed
 import akka.stream.ThrottleMode.Shaping
 import akka.stream.ActorMaterializer
 import akka.stream.scaladsl.{Flow, Sink, Source}
+import me.wordcount.WordCounter.{CountResult, printResult}
 
 import scala.annotation.tailrec
 import scala.concurrent.Future
 import scala.concurrent.duration._
+import scala.math.Ordering
 import scala.util.{Success, Try}
 
 object WordCounter {
 
-  type CountResult = Map[String, Int]
+  type CountResult = List[(String, Int)]
 
-  def count(first: CharacterReader, rest: CharacterReader*)
-           (implicit mat: ActorMaterializer): Future[CountResult] = count(first :: rest.toList)
-
-  //todo: async boundaries
-  def count(readers: List[CharacterReader])(implicit mat: ActorMaterializer): Future[CountResult] =
-    Source(readers)
-      .flatMapMerge(readers.length, WordSource.build(_).async)
-      .scan(Map.empty[String, Int]) { (result, message) =>
-        result + (message -> (result.getOrElse(message, 0) + 1))
-      }
-      .wireTap(
-        Flow[CountResult]
-          .throttle(1, 5 seconds, 0, Shaping)
-          .map(printResult("Current result"))
-          .to(Sink.ignore)
-      )
-      .runWith(Sink.last)
-
-   // todo: sort output
-   def printResult(title: String)(result: CountResult): Unit = {
+  def printResult(title: String)(result: CountResult): Unit = {
     println("================================")
     println(s"$title")
     println("================================")
+
     result.foreach { case (word, count) =>
-        println(s"$word: $count")
+      println(s"$word: $count")
     }
   }
 
 }
 
+class WordCounter()(implicit mat: ActorMaterializer) {
+
+  def count(first: CharacterReader, rest: CharacterReader*): Future[CountResult] = count(first :: rest.toList)
+
+  //todo: async boundaries
+  def count(readers: List[CharacterReader]): Future[CountResult] =
+    Source(readers)
+      .flatMapMerge(readers.length, WordSource.build(_).async)
+      .scan(Map.empty[String, Int]) { (result, message) =>
+        result + (message -> (result.getOrElse(message, 0) + 1))
+      }
+      .map(_.toList.sortBy(_.swap)(Ordering.Tuple2(Ordering[Int].reverse, Ordering[String])))
+      .wireTap(
+        Flow[CountResult]
+          .throttle(1, 10 seconds, 0, Shaping)
+          .map(printResult("Current result"))
+          .to(Sink.ignore)
+      )
+      .runWith(Sink.last)
+}
+
 object WordSource {
 
-  val SeparatorChars = Set('.', ',', '\n', ' ', '\t')
+  val SeparatorChars = Set('.', ',', '\n', ' ', '\t', '!', '?')
 
   def build(cr: CharacterReader): Source[String, NotUsed] = {
 
@@ -70,7 +75,7 @@ object WordSource {
       .map(_ => nextWord)
       .takeWhile(_.nonEmpty, inclusive = true)
       .flatMapConcat {
-        case Some(word) => Source.single(word)
+        case Some(word) => Source.single(word.toLowerCase)
         case None =>
           cr.close()
           Source.empty
