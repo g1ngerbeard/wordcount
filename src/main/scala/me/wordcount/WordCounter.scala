@@ -1,14 +1,15 @@
 package me.wordcount
 
 import akka.NotUsed
-import akka.stream.ThrottleMode.Shaping
 import akka.stream.ActorMaterializer
+import akka.stream.ThrottleMode.Shaping
+import akka.stream.scaladsl.Sink.foreach
 import akka.stream.scaladsl.{Flow, Sink, Source}
-import me.wordcount.WordCounter.{CountResult, printResult}
+import me.wordcount.WordCounter.{CountResult, printResult, sortedResult}
 
 import scala.annotation.tailrec
-import scala.concurrent.Future
 import scala.concurrent.duration._
+import scala.concurrent.{ExecutionContext, Future}
 import scala.math.Ordering
 import scala.util.{Success, Try}
 
@@ -26,9 +27,16 @@ object WordCounter {
     }
   }
 
+  private def sortedResult(aggregate: Map[String, Int]): CountResult =
+    aggregate
+      .toList
+      .sortBy(_.swap)(Ordering.Tuple2(Ordering[Int].reverse, Ordering[String]))
+
 }
 
 class WordCounter()(implicit mat: ActorMaterializer) {
+
+  implicit val ctx: ExecutionContext = mat.system.dispatcher
 
   def count(first: CharacterReader, rest: CharacterReader*): Future[CountResult] = count(first :: rest.toList)
 
@@ -39,14 +47,15 @@ class WordCounter()(implicit mat: ActorMaterializer) {
       .scan(Map.empty[String, Int]) { (result, message) =>
         result + (message -> (result.getOrElse(message, 0) + 1))
       }
-      .map(_.toList.sortBy(_.swap)(Ordering.Tuple2(Ordering[Int].reverse, Ordering[String])))
       .wireTap(
-        Flow[CountResult]
+        Flow[Map[String, Int]]
           .throttle(1, 10 seconds, 0, Shaping)
-          .map(printResult("Current result"))
-          .to(Sink.ignore)
+          .map(sortedResult)
+          .to(foreach(printResult("Current result")))
       )
       .runWith(Sink.last)
+      .map(sortedResult)
+
 }
 
 object WordSource {
