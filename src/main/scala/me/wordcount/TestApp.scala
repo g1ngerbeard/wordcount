@@ -4,7 +4,7 @@ import akka.actor.ActorSystem
 import akka.stream.ActorMaterializer
 import me.wordcount.WordCounter.CountResult
 
-import scala.concurrent.Await
+import scala.concurrent.{Await, ExecutionContext}
 import scala.concurrent.duration._
 
 object TestApp extends App {
@@ -22,6 +22,7 @@ object TestApp extends App {
       Ipsum is that it has a more-or-less normal distribution"""
 
   implicit val system: ActorSystem = ActorSystem()
+  implicit val ctx: ExecutionContext = system.dispatcher
   implicit val mat: ActorMaterializer = ActorMaterializer()
 
   val readers = TestText.split('\n').map(new DelayedCharacterReader(_,1000)).toList

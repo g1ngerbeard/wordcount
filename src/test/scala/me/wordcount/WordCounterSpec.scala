@@ -5,14 +5,14 @@ import akka.stream.ActorMaterializer
 import me.wordcount.WordCounterSpec.{TestDelay, withMaterializer, withWordCounter}
 import org.scalatest.{FunSuite, Matchers}
 
-import scala.concurrent.Await
 import scala.concurrent.duration._
+import scala.concurrent.{Await, ExecutionContext}
 
 class WordCounterSpec extends FunSuite with Matchers {
 
   test("construct source of words") {
     withMaterializer { implicit mat =>
-      val testText = "Hello, mister cat! What is your name?"
+      val testText = "Hello, mister cat! What is your name?  "
       val words = List("hello", "mister", "cat", "what", "is", "your", "name")
 
       val reader = new SimpleCharacterReader(testText)
@@ -65,6 +65,7 @@ object WordCounterSpec {
 
   def withWordCounter(runTest: WordCounter => Unit): Unit =
     withMaterializer { implicit mat =>
+      implicit val ctx: ExecutionContext = mat.system.dispatcher
       runTest(new WordCounter())
     }
 

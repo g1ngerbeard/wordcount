@@ -1,17 +1,16 @@
 package me.wordcount
 
 import akka.NotUsed
-import akka.stream.ActorMaterializer
 import akka.stream.ThrottleMode.Shaping
 import akka.stream.scaladsl.Sink.foreach
 import akka.stream.scaladsl.{Flow, Sink, Source}
+import akka.stream.{Materializer, SubstreamCancelStrategy}
 import me.wordcount.WordCounter.{CountResult, printResult, sortedResult}
 
-import scala.annotation.tailrec
 import scala.concurrent.duration._
 import scala.concurrent.{ExecutionContext, Future}
 import scala.math.Ordering
-import scala.util.{Success, Try}
+import scala.util.Try
 
 object WordCounter {
 
@@ -34,9 +33,7 @@ object WordCounter {
 
 }
 
-class WordCounter()(implicit mat: ActorMaterializer) {
-
-  implicit val ctx: ExecutionContext = mat.system.dispatcher
+class WordCounter()(implicit mat: Materializer, ctx: ExecutionContext) {
 
   def count(first: CharacterReader, rest: CharacterReader*): Future[CountResult] = count(first :: rest.toList)
 
@@ -55,41 +52,24 @@ class WordCounter()(implicit mat: ActorMaterializer) {
       )
       .runWith(Sink.last)
       .map(sortedResult)
-
 }
 
 object WordSource {
 
   val SeparatorChars = Set('.', ',', ' ', '!', '?', '\t', '\n')
 
-  def from(cr: CharacterReader): Source[String, NotUsed] = {
-
-    // todo: rewrite as a stream stage?
-    def nextWord: Option[String] = {
-      @tailrec
-      def loop(word: String): Option[String] =
-        Try(cr.nextCharacter()) match {
-          case Success(c) if SeparatorChars.contains(c) =>
-            if (word.nonEmpty) Some(word) else loop("")
-          case Success(c) => loop(word + c)
-          case _ if word.nonEmpty => Some(word)
-          case _ => None
-        }
-
-      loop("")
-    }
-
+  def from(cr: CharacterReader): Source[String, NotUsed] =
     Source
       .repeat(NotUsed)
-      .map(_ => nextWord)
+      .map(_ => Try(cr.nextCharacter()).toOption)
       .takeWhile(_.nonEmpty, inclusive = true)
-      .flatMapConcat {
-        case Some(word) => Source.single(word.toLowerCase)
-        case None =>
-          cr.close()
-          Source.empty
-      }
-
-  }
+      .wireTap(elem => if (elem.isEmpty) cr.close())
+      .collect { case Some(c) => c }
+      .splitWhen(SubstreamCancelStrategy.propagate)(SeparatorChars.contains)
+      .filterNot(SeparatorChars.contains)
+      .fold(Vector.empty[Char])(_ :+ _)
+      .map(_.mkString.toLowerCase)
+      .filter(_.nonEmpty)
+      .concatSubstreams
 
 }
