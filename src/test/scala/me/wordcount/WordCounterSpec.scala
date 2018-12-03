@@ -1,10 +1,13 @@
 package me.wordcount
 
+import java.io.EOFException
+
 import akka.actor.ActorSystem
 import akka.stream.ActorMaterializer
 import me.wordcount.WordCounterSpec.{TestDelay, withMaterializer, withWordCounter}
 import org.scalatest.{FunSuite, Matchers}
 
+import scala.collection.mutable
 import scala.concurrent.duration._
 import scala.concurrent.{Await, ExecutionContext}
 
@@ -43,6 +46,22 @@ class WordCounterSpec extends FunSuite with Matchers {
       val result = Await.result(wordCounter.count(reader1, reader2), 1 second)
 
       result shouldBe List("the" -> 4, "on" -> 2, "sat" -> 2, "cat" -> 1, "dog"-> 1, "mat" -> 1, "stone" -> 1)
+    }
+  }
+
+  test("close reader after the end of the stream is reached"){
+    withWordCounter { wordCounter =>
+      var readerClosed = false
+
+      val reader: CharacterReader = new CharacterReader {
+        private val chars = mutable.Queue('t', 'e', 's', 't')
+        def nextCharacter(): Char = if (chars.isEmpty) throw new EOFException else chars.dequeue()
+        def close(): Unit = readerClosed = true
+      }
+
+      Await.result(wordCounter.count(reader), 1 second) shouldBe List("test" -> 1)
+
+      readerClosed shouldBe true
     }
   }
 

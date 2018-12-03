@@ -37,7 +37,6 @@ class WordCounter()(implicit mat: Materializer, ctx: ExecutionContext) {
 
   def count(first: CharacterReader, rest: CharacterReader*): Future[CountResult] = count(first :: rest.toList)
 
-  //todo: async boundaries
   def count(readers: List[CharacterReader]): Future[CountResult] =
     Source(readers)
       .flatMapMerge(readers.length, WordSource.from(_).async)
