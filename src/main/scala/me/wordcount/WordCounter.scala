@@ -5,7 +5,7 @@ import akka.stream.ThrottleMode.Shaping
 import akka.stream.scaladsl.Sink.foreach
 import akka.stream.scaladsl.{Flow, Sink, Source}
 import akka.stream.{Materializer, SubstreamCancelStrategy}
-import me.wordcount.WordCounter.{CountResult, printResult, sortedResult}
+import me.wordcount.WordCounter.{CountResult, printResult, sortResult}
 
 import scala.concurrent.duration._
 import scala.concurrent.{ExecutionContext, Future}
@@ -26,7 +26,7 @@ object WordCounter {
     }
   }
 
-  private def sortedResult(aggregate: Map[String, Int]): CountResult =
+  private def sortResult(aggregate: Map[String, Int]): CountResult =
     aggregate
       .toList
       .sortBy(_.swap)(Ordering.Tuple2(Ordering[Int].reverse, Ordering[String]))
@@ -39,30 +39,30 @@ class WordCounter()(implicit mat: Materializer, ctx: ExecutionContext) {
 
   def count(readers: List[CharacterReader]): Future[CountResult] =
     Source(readers)
-      .flatMapMerge(readers.length, WordSource.from(_).async)
+      .flatMapMerge(readers.length, reader => WordSource.from(reader).async)
       .scan(Map.empty[String, Int]) { (result, message) =>
         result + (message -> (result.getOrElse(message, 0) + 1))
       }
       .wireTap(
         Flow[Map[String, Int]]
           .throttle(1, 10 seconds, 0, Shaping)
-          .map(sortedResult)
+          .map(sortResult)
           .to(foreach(printResult("Current result")))
       )
       .runWith(Sink.last)
-      .map(sortedResult)
+      .map(sortResult)
 }
 
 object WordSource {
 
   val SeparatorChars = Set('.', ',', ' ', '!', '?', '\t', '\n')
 
-  def from(cr: CharacterReader): Source[String, NotUsed] =
+  def from(reader: CharacterReader): Source[String, NotUsed] =
     Source
       .repeat(NotUsed)
-      .map(_ => Try(cr.nextCharacter()).toOption)
+      .map(_ => Try(reader.nextCharacter()).toOption)
       .takeWhile(_.nonEmpty, inclusive = true)
-      .wireTap(elem => if (elem.isEmpty) cr.close())
+      .wireTap(elem => if (elem.isEmpty) reader.close())
       .collect { case Some(c) => c }
       .splitWhen(SubstreamCancelStrategy.propagate)(SeparatorChars.contains)
       .filterNot(SeparatorChars.contains)
